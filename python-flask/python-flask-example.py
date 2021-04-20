@@ -13,22 +13,19 @@ def log_payload(path):
         return 'Content type is not JSON', 415
 
     # Ensure that payload is a dictionary
-    payload = request.json
-    if not isinstance(payload, dict):
+    data = request.json
+    if not isinstance(data, dict):
         return 'Payload is not JSON', 500
 
     # Get message data
-    timestamp = datetime.datetime.now()
-    message = payload.get('message',{})
-    if message:
-        # Get device ID
-        id = message.get('attributes',{}).get('deviceId','')
-        # Get base64 encoded data payload
-        data = base64.b64decode(message.get('data',''))
-        print('----- Got message from {} ({}) -------'.format(id, timestamp))
-        pprint.pprint(json.loads(data))
-    else:
-        print('----- Got message that could not be parsed ({}) -----'.format(timestamp))
+    try:
+        device_id = data['deviceId']
+        payload = data.get('payload', {})
+        timestamp = data.get('timestamp', '(no timestamp provided)')
+        print('----- Got message from {} ({}) -------'.format(device_id, timestamp))
+        pprint.pprint(payload)
+    except:
+        print('----- Got message that could not be parsed -----')
         print(payload)
     return 'OK', 200
 
