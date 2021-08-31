@@ -2,15 +2,15 @@
 
 const fs = require('fs')
 const express = require('express')
+
 const app = express()
-const bodyParser = require('body-parser')
 
 const port = 1234
 
 const timestamp = () => Math.floor(+new Date() / 1000)
 const randomNumber = (min, max) => Math.floor(Math.random() * (max - min + 1) + min)
 
-app.use(bodyParser.json())
+app.use(express.json())
 
 app.post('/', async (req, res) => {
 	const postData = req.body
