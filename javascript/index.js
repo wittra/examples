@@ -12,7 +12,7 @@ const randomNumber = (min, max) => Math.floor(Math.random() * (max - min + 1) + 
 
 app.use(express.json())
 
-app.post('/', async (req, res) => {
+app.post('/', (req, res) => {
 	const postData = req.body
 	const deviceId = postData.deviceId
 	
@@ -22,8 +22,8 @@ app.post('/', async (req, res) => {
 		const folder = 'data/' + deviceId
 		const file = folder + '/' + timestamp() + '_' + randomNumber(10000, 99999) + '.json'
 		
-		await fs.mkdirSync(folder, { recursive: true })
-		await fs.writeFileSync(file, JSON.stringify(postData, null, 4))
+		fs.mkdirSync(folder, { recursive: true })
+		fs.writeFileSync(file, JSON.stringify(postData, null, 4))
 	}
 	
 	res.end()
