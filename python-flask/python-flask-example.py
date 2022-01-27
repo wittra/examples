@@ -19,15 +19,17 @@ def log_payload(path):
 
     # Get message data
     try:
-        device_id = data['deviceId']
-        payload = data.get('payload', {})
-        timestamp = data.get('timestamp', '(no timestamp provided)')
+        device_id = data.get('gatewayInfo').get('delegatedDeviceId')
+        binaryData = data.get('binaryData')
+        payload = base64.decodebytes(bytes(binaryData, 'UTF-8'))
+        timestamp = data.get('timestamp', 'no timestamp provided')
         print('----- Got message from {} ({}) -------'.format(device_id, timestamp))
         pprint.pprint(payload)
     except:
         print('----- Got message that could not be parsed -----')
-        print(payload)
+        print(data)
+
     return 'OK', 200
 
 if __name__ == '__main__':
-    app.run()
+    app.run(host="0.0.0.0")
