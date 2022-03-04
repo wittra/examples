@@ -43,14 +43,14 @@ To test the setup on a local machine a tunneling service like
 you a URL to register in the Wittra Portal.
 
 ```console
-$ ./ngrok http 5000
+$ ./ngrok http 1234
 ngrok by @inconshreveable
 
 Session Status                online
 Account                       John Doe (Plan: Free)
 Web Interface                 http://127.0.0.1:4040
-Forwarding                    http://123456783.ngrok.io -> http://localhost:5000
-Forwarding                    https://12345678.ngrok.io -> http://localhost:5000
+Forwarding                    http://123456783.ngrok.io -> http://localhost:1234
+Forwarding                    https://12345678.ngrok.io -> http://localhost:1234
 ```
 
 In this case registering `https://12345678.ngrok.io` in the Wittra Portal would

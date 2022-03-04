@@ -5,6 +5,7 @@ import pprint
 import datetime
 app = Flask(__name__)
 
+
 @app.route('/', defaults={'path': ''}, methods=['POST'])
 @app.route('/<path:path>', methods=['POST'])
 def log_payload(path):
@@ -29,5 +30,6 @@ def log_payload(path):
         print(payload)
     return 'OK', 200
 
+
 if __name__ == '__main__':
-    app.run()
+    app.run(host='0.0.0.0', port=1234)
