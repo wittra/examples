@@ -27,7 +27,7 @@ def log_payload(path):
         pprint.pprint(payload)
     except:
         print('----- Got message that could not be parsed -----')
-        print(payload)
+        print(data)
     return 'OK', 200
 
 
