@@ -15,6 +15,8 @@ app.use(express.json());
 
 app.post("/", (req, res) => {
   const postData = req.body;
+  // Print headers to show auth-token
+  console.log(req.headers);
   const deviceId = postData.deviceId;
   var today = new Date();
   var time =
