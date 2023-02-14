@@ -20,7 +20,7 @@ app.post("/", (req, res) => {
   var time =
     today.getHours() + ":" + today.getMinutes() + ":" + today.getSeconds();
 
-  if (/^(D[A-F0-9]{16})|(G[A-F0-9]{18})$/.test(deviceId)) {
+  if (/^(D[A-F0-9]{16})|(G[A-F0-9]{18})|(M[A-F0-9]{16})$/.test(deviceId)) {
     console.log("--------------------------------------------------");
     console.log(time);
     console.log("Saving data from device " + deviceId);
