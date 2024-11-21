@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CBOR to JSON Converter</title>
+  <script src="https://unpkg.com/cbor-web@9.0.2/dist/cbor.js"></script>
+</head>
+<body>
+  <h1>CBOR to JSON Converter</h1>
+
+  <label for="payload">CBOR Payload (Hex):</label>
+  <input type="text" id="payload" value="A1627633A2617361656164BF616183183A2E190421FF" /><br /><br />
+
+  <button id="convertButton">Convert to JSON</button>
+
+  <div id="output"></div>
+
+  <script>
+    const convertButton = document.getElementById('convertButton');
+    const outputDiv = document.getElementById('output');
+
+    convertButton.addEventListener('click', async () => {
+      const payloadHex = document.getElementById('payload').value;
+
+      if (!payloadHex) {
+        alert('Please enter a CBOR payload in hex format.');
+        return;
+      }
+      // Convert hex string to Uint8Array
+      const buf = new Uint8Array(payloadHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+
+      // Decode the CBOR data
+      cbor.decodeFirst(buf, {bigint: true, preferWeb: true}).then(o => {
+        // Convert the decoded CBOR data to JSON
+        const jsonData = JSON.stringify(o, null, 2);
+        // Display the JSON data
+        outputDiv.innerHTML = `<pre>${jsonData}</pre>`;
+      }).catch(error => {
+        console.error('Error decoding payload:', error);
+        outputDiv.innerHTML = `<p>Error decoding payload: ${error}</p>`;
+      });
+    });
+  </script>
+</body>
+</html>
