@@ -1,0 +1,110 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: postgres-db
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${TB_DB_USERNAME:-thingsboard}
+      POSTGRES_PASSWORD: ${TB_DB_PASSWORD:-password}
+      POSTGRES_DB: ${TB_DB_NAME:-thingsboard}
+    volumes:
+      - mytb-postgres-data:/var/lib/postgresql/data
+    networks:
+      - thingsboard-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TB_DB_USERNAME:-thingsboard}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mytb:
+    restart: always
+    image: "thingsboard/tb-postgres"
+    container_name: thingsboard
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:9090"
+      - "1883:1883"
+      - "7070:7070"
+      - "5683-5688:5683-5688/udp"
+    environment:
+      TB_QUEUE_TYPE: in-memory
+      LOAD_DEMO: false
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${TB_DB_NAME:-thingsboard}
+      SPRING_DATASOURCE_USERNAME: ${TB_DB_USERNAME:-thingsboard}
+      SPRING_DATASOURCE_PASSWORD: ${TB_DB_PASSWORD:-password}
+      SPRING_JPA_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+      SQL_POSTGRES_TS_KV_PARTITIONING: MONTHS
+    volumes:
+      - mytb-data:/data
+      - mytb-logs:/var/log/thingsboard
+    networks:
+      - thingsboard-net
+
+  noip-updater:
+    build:
+      context: .
+      dockerfile: Dockerfile.noip
+    container_name: noip-updater
+    environment:
+      NOIP_USERNAME: ${NOIP_USERNAME}
+      NOIP_PASSWORD: ${NOIP_PASSWORD}
+      NOIP_HOSTNAME: ${NOIP_HOSTNAME}
+    restart: always
+    networks:
+      - thingsboard-net
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx-proxy
+    restart: always
+    ports:
+      - "80:80" # HTTP
+      - "443:443" # HTTPS
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - certs:/etc/letsencrypt:ro
+      - webroot:/var/www/certbot
+    networks:
+      - thingsboard-net
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot
+    depends_on:
+      - nginx
+    volumes:
+      - certs:/etc/letsencrypt
+      - certbot-logs:/var/log/letsencrypt
+      - webroot:/var/www/certbot
+    environment:
+      EMAIL: ${EMAIL}
+      DOMAIN_NAME: ${DOMAIN_NAME}
+    command: certonly --webroot --webroot-path=/var/www/certbot --email ${EMAIL} --agree-tos -d ${DOMAIN_NAME}
+    # TODO: Uncomment to auto renew certs every 89 days
+    # entrypoint: >
+    #   /bin/sh -c '
+    #   if [ ! -f /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem ]; then
+    #     certbot certonly --standalone --email ${EMAIL} --agree-tos -d ${DOMAIN_NAME};
+    #   fi;
+    #   trap exit TERM;
+    #   while :; do
+    #     sleep  & wait $!;
+    #     certbot renew;
+    #   done'
+
+networks:
+  thingsboard-net:
+    driver: bridge
+
+volumes:
+  mytb-postgres-data:
+  mytb-data:
+  mytb-logs:
+  certbot-logs:
+  certs:
+  webroot:

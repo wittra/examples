@@ -1,0 +1,8 @@
+FROM alpine/curl:latest
+
+WORKDIR /app
+
+COPY noip.sh /app/noip.sh
+RUN chmod +x /app/noip.sh
+
+CMD ["sh", "-c", "while true; do sh noip.sh; sleep 300; done"]
