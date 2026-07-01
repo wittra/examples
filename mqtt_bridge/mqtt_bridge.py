@@ -1,6 +1,7 @@
 import paho.mqtt.client as mqtt
 import ssl
 import os
+import json
 
 SOURCE_HOST = os.environ.get("SOURCE_HOST", "localhost")
 SOURCE_PORT = int(os.environ.get("SOURCE_PORT", "1883"))
@@ -13,6 +14,8 @@ TARGET_HOST = os.environ.get("TARGET_HOST", "localhost")
 TARGET_PORT = int(os.environ.get("TARGET_PORT", "1883"))
 TARGET_USER = os.environ.get("TARGET_USER", "")
 TARGET_PASS = os.environ.get("TARGET_PASS", "")
+TARGET_TOPIC = os.environ.get("TARGET_TOPIC", "")
+TARGET_TLS = os.environ.get("TARGET_TLS", "").lower() in ("1", "true", "yes")
 
 target = None
 
@@ -23,8 +26,18 @@ def on_connect(client, userdata, flags, reason_code, properties):
 
 
 def on_message(client, userdata, msg):
-    print(f"Relaying {msg.topic}")
-    target.publish(msg.topic, msg.payload, qos=msg.qos, retain=msg.retain)
+    dest = TARGET_TOPIC if TARGET_TOPIC else msg.topic
+    parts = dest.split("/")
+    if "<deviceId>" in parts or "<deviceIdShort>" in parts:
+        try:
+            device_id = json.loads(msg.payload)["deviceId"]
+            device_id_short = device_id[1:] if device_id and device_id[0] in ("D", "M", "L", "G") else device_id
+            dest = dest.replace("<deviceId>", device_id).replace("<deviceIdShort>", device_id_short)
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"Failed to extract deviceId: {e}")
+            return
+    print(f"Relaying {msg.topic} -> {dest}")
+    target.publish(dest, msg.payload, qos=msg.qos, retain=msg.retain)
 
 
 def main():
@@ -33,6 +46,8 @@ def main():
     target = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     if TARGET_USER:
         target.username_pw_set(TARGET_USER, TARGET_PASS)
+    if TARGET_TLS:
+        target.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS)
     target.connect(TARGET_HOST, TARGET_PORT)
     target.loop_start()
 
