@@ -2,15 +2,25 @@
 
 Relays all messages from a source MQTT broker to a target broker, preserving topic, QoS, and retain flag.
 
-## Requirements
+## Installation
+
+`install.sh` is written for Debian/Ubuntu. It needs `python3` and `python3-venv`:
 
 ```console
-$ pip3 install paho-mqtt
+$ sudo apt install python3 python3-venv
 ```
+
+On other systems, any Python 3 that ships with the `venv` module works.
+
+```console
+$ ./install.sh
+```
+
+This creates a virtual environment in `.venv`, installs `requirements.txt` into it, and copies `.env.example` to `.env` (if `.env` doesn't already exist).
 
 ## Configuration
 
-All settings are provided via environment variables:
+All settings are provided via environment variables. Edit `.env` to set them:
 
 | Variable | Default | Description |
 |---|---|---|
@@ -41,5 +51,6 @@ Example: `TARGET_TOPIC=devices/<deviceIdShort>/telemetry`
 ## Running
 
 ```console
-$ python3 mqtt_bridge.py
+$ set -a && . ./.env && set +a
+$ .venv/bin/python mqtt_bridge.py
 ```
