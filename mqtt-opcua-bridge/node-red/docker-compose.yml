@@ -1,6 +1,8 @@
 services:
   node-red:
-    image: nodered/node-red:4.1.16-22
+    # Node-RED + the nodes in scripts/package.json, see Dockerfile
+    build: .
+    image: mqtt-opcua-bridge-node-red
     container_name: node-red
     restart: unless-stopped
     ports:
