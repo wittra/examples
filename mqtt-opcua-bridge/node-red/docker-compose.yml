@@ -1,0 +1,17 @@
+services:
+  node-red:
+    # Node-RED + the nodes in scripts/package.json, see Dockerfile
+    build: .
+    image: mqtt-opcua-bridge-node-red
+    container_name: node-red
+    restart: unless-stopped
+    ports:
+      - "1880:1880"
+      - "53880:53880" # Pay attention to this port, the standard OPC UA port is 4840.
+    environment:
+      - TZ=Europe/Stockholm
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./data:/data

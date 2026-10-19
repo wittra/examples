@@ -1,0 +1,10 @@
+{
+    "name": "node-red-project",
+    "description": "A Node-RED Project",
+    "version": "0.0.1",
+    "private": true,
+    "dependencies": {
+        "@opcua/for-node-red": "~3.41.1",
+        "node-red-contrib-opcua-compact-server": "~2.2.0"
+    }
+}
