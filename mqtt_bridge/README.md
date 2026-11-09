@@ -35,6 +35,7 @@ All settings are provided via environment variables. Edit `.env` to set them:
 | `TARGET_TLS` | `false` | Enable TLS for the target connection |
 | `TARGET_USER` | _(none)_ | Target broker username |
 | `TARGET_PASS` | _(none)_ | Target broker password |
+| `DEVICE_TYPES` | _(all)_ | Only relay devices whose ID starts with one of these letters, comma separated, e.g. `D,L,M` to skip gateways (`G`) |
 | `TARGET_TOPIC` | _(same as source)_ | Topic to publish to on the target broker. Supports `<deviceId>` and `<deviceIdShort>` placeholders (see below) |
 
 ### Topic placeholders
@@ -62,6 +63,30 @@ The `+` matches every device of project `abc123`. Each message is published on i
 | `customer/abc123/telemetry/GA0B1C2D3E4F5A6B7` | `/up/mysecret/id/A0B1C2D3E4F5A6B7` |
 
 If `TARGET_TOPIC` is not set, each message is published on the same topic it arrived on.
+
+### Example: relay only some device types
+
+The first letter of a device ID is its type:
+
+| Letter | Device type |
+|---|---|
+| `D` | Wittra device |
+| `M` | mioty device |
+| `L` | LoRa device |
+| `G` | gateway |
+
+By default every device is relayed, gateways included. To relay only some types, list their letters in `DEVICE_TYPES`:
+
+```
+SOURCE_TOPIC='customer/abc123/telemetry/+'
+DEVICE_TYPES=D,L,M
+```
+
+| Message received on the source broker | Result |
+|---|---|
+| `customer/abc123/telemetry/D00124B0026ACFA97` | relayed |
+| `customer/abc123/telemetry/LA81758FFFE0F4508` | relayed |
+| `customer/abc123/telemetry/G01230C1D29E2695EEE` | skipped, the bridge prints `Skipping … device type 'G' is not in DEVICE_TYPES` |
 
 ## Running
 
