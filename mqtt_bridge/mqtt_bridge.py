@@ -22,7 +22,12 @@ target = None
 
 def on_connect(client, userdata, flags, reason_code, properties):
     print(f"Connected to source with result code {reason_code}")
+    print(f"Subscribing to {SOURCE_TOPIC!r}")
     client.subscribe(SOURCE_TOPIC)
+
+
+def on_subscribe(client, userdata, mid, reason_codes, properties):
+    print(f"Subscription result: {[str(code) for code in reason_codes]}")
 
 
 def on_message(client, userdata, msg):
@@ -57,6 +62,7 @@ def main():
     if SOURCE_TLS:
         source.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS)
     source.on_connect = on_connect
+    source.on_subscribe = on_subscribe
     source.on_message = on_message
 
     source.connect(SOURCE_HOST, SOURCE_PORT)

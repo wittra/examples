@@ -46,11 +46,38 @@ All settings are provided via environment variables. Edit `.env` to set them:
 | `<deviceId>` | Full device ID as found in the payload, e.g. `D0123456789ABCDEF` |
 | `<deviceIdShort>` | Device ID with the leading type prefix stripped (`D`, `M`, `L`, `G`), e.g. `0123456789ABCDEF` |
 
-Example: `TARGET_TOPIC=devices/<deviceIdShort>/telemetry`
+### Example: relay all devices of a project
+
+```
+SOURCE_TOPIC='customer/abc123/telemetry/+'
+TARGET_TOPIC='/up/mysecret/id/<deviceIdShort>'
+```
+
+The `+` matches every device of project `abc123`. Each message is published on its own target topic:
+
+| Message received on the source broker | Published on the target broker |
+|---|---|
+| `customer/abc123/telemetry/LA81758FFFE0F4508` | `/up/mysecret/id/A81758FFFE0F4508` |
+| `customer/abc123/telemetry/D00124B0026ACFA97` | `/up/mysecret/id/00124B0026ACFA97` |
+| `customer/abc123/telemetry/GA0B1C2D3E4F5A6B7` | `/up/mysecret/id/A0B1C2D3E4F5A6B7` |
+
+If `TARGET_TOPIC` is not set, each message is published on the same topic it arrived on.
 
 ## Running
+
+Keep the settings in `.env` and load them as below.
 
 ```console
 $ set -a && . ./.env && set +a
 $ .venv/bin/python mqtt_bridge.py
 ```
+
+On start the bridge prints the exact filter it subscribes to and the broker's answer:
+
+```
+Connected to source with result code Success
+Subscribing to 'customer/<projectId>/telemetry/#'
+Subscription result: ['Granted QoS 0']
+```
+
+If the printed filter differs from what you set, the value was changed on the way in. Each relayed message prints a `Relaying <source topic> -> <target topic>` line.
