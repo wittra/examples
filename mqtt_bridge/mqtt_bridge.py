@@ -38,8 +38,11 @@ def on_message(client, userdata, msg):
     if DEVICE_TYPES or "<deviceId>" in parts or "<deviceIdShort>" in parts:
         try:
             device_id = json.loads(msg.payload)["deviceId"]
-        except (json.JSONDecodeError, KeyError) as e:
+        except (ValueError, KeyError, TypeError) as e:
             print(f"Failed to extract deviceId: {e}")
+            return
+        if not isinstance(device_id, str):
+            print(f"Failed to extract deviceId: {device_id!r} is not a string")
             return
         if DEVICE_TYPES and device_id[:1] not in DEVICE_TYPES:
             print(f"Skipping {msg.topic}: device type {device_id[:1]!r} is not in DEVICE_TYPES")
