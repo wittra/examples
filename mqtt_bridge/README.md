@@ -105,4 +105,4 @@ Subscribing to 'customer/<projectId>/telemetry/#'
 Subscription result: ['Granted QoS 0']
 ```
 
-If the printed filter differs from what you set, the value was changed on the way in. Each relayed message prints a `Relaying <source topic> -> <target topic>` line.
+Check that the printed filter is the one you configured. Each relayed message prints a `Relaying <source topic> -> <target topic>` line.
