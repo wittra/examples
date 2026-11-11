@@ -17,25 +17,38 @@ TARGET_PASS = os.environ.get("TARGET_PASS", "")
 TARGET_TOPIC = os.environ.get("TARGET_TOPIC", "")
 TARGET_TLS = os.environ.get("TARGET_TLS", "").lower() in ("1", "true", "yes")
 
+DEVICE_TYPES = [t.strip() for t in os.environ.get("DEVICE_TYPES", "").split(",") if t.strip()]
+
 target = None
 
 
 def on_connect(client, userdata, flags, reason_code, properties):
     print(f"Connected to source with result code {reason_code}")
+    print(f"Subscribing to {SOURCE_TOPIC!r}")
     client.subscribe(SOURCE_TOPIC)
+
+
+def on_subscribe(client, userdata, mid, reason_codes, properties):
+    print(f"Subscription result: {[str(code) for code in reason_codes]}")
 
 
 def on_message(client, userdata, msg):
     dest = TARGET_TOPIC if TARGET_TOPIC else msg.topic
     parts = dest.split("/")
-    if "<deviceId>" in parts or "<deviceIdShort>" in parts:
+    if DEVICE_TYPES or "<deviceId>" in parts or "<deviceIdShort>" in parts:
         try:
             device_id = json.loads(msg.payload)["deviceId"]
-            device_id_short = device_id[1:] if device_id and device_id[0] in ("D", "M", "L", "G") else device_id
-            dest = dest.replace("<deviceId>", device_id).replace("<deviceIdShort>", device_id_short)
-        except (json.JSONDecodeError, KeyError) as e:
+        except (ValueError, KeyError, TypeError) as e:
             print(f"Failed to extract deviceId: {e}")
             return
+        if not isinstance(device_id, str):
+            print(f"Failed to extract deviceId: {device_id!r} is not a string")
+            return
+        if DEVICE_TYPES and device_id[:1] not in DEVICE_TYPES:
+            print(f"Skipping {msg.topic}: device type {device_id[:1]!r} is not in DEVICE_TYPES")
+            return
+        device_id_short = device_id[1:] if device_id and device_id[0] in ("D", "M", "L", "G") else device_id
+        dest = dest.replace("<deviceId>", device_id).replace("<deviceIdShort>", device_id_short)
     print(f"Relaying {msg.topic} -> {dest}")
     target.publish(dest, msg.payload, qos=msg.qos, retain=msg.retain)
 
@@ -57,6 +70,7 @@ def main():
     if SOURCE_TLS:
         source.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS)
     source.on_connect = on_connect
+    source.on_subscribe = on_subscribe
     source.on_message = on_message
 
     source.connect(SOURCE_HOST, SOURCE_PORT)
