@@ -120,36 +120,6 @@
         "wires": []
     },
     {
-        "id": "ca7addfda76e6b35",
-        "type": "opcua-tag-dictionary",
-        "z": "3b41bd70dd146f5e",
-        "name": "Test Tag Dict",
-        "blueprintContextKey": "OpcBlueprint",
-        "contextStore": "memoryOnly",
-        "tags": [
-            {
-                "folder": "food/availbility",
-                "tagName": "hot-dog-01",
-                "dataType": "Boolean"
-            },
-            {
-                "folder": "food/availbility",
-                "tagName": "dubbel-burgare",
-                "dataType": "Double"
-            },
-            {
-                "folder": "food/specification",
-                "tagName": "dubbel-burgare",
-                "dataType": "Double"
-            }
-        ],
-        "x": 510,
-        "y": 260,
-        "wires": [
-            []
-        ]
-    },
-    {
         "id": "5e7710b2cd428904",
         "type": "function",
         "z": "3b41bd70dd146f5e",
