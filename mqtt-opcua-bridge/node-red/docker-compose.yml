@@ -17,6 +17,7 @@ services:
       MQTT_PASS: ${MQTT_PASS:-}
       MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-}
       MQTT_TOPIC: ${MQTT_TOPIC:-onprem/#}
+      OPCUA_SENSORS: ${OPCUA_SENSORS:-}
     volumes:
       - data:/data
       - ./scripts:/opt/bridge:ro # flow, settings and check script, from git

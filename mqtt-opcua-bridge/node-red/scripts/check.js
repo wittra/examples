@@ -18,7 +18,12 @@ const endpointUrl = `opc.tcp://${os.hostname()}:53880/UA/Wittra/EU-Testbed`;
 const serverPki = "/data/pki";
 const [{ username, password }] = JSON.parse(fs.readFileSync("/run/secrets/opcua-users.json", "utf8"));
 const device = "WITTRA-CHECK";
-const type = "check-sensor";
+const onpremDevice = "WITTRA-ONPREM";
+// Same OPCUA_SENSORS matching as the flow. The test message type must pass the filter; "blocked" must not.
+const allow = (process.env.OPCUA_SENSORS || "").split(",").map((s) => s.trim()).filter(Boolean);
+const exposed = (s) => !allow.length || allow.some((p) => (p.endsWith("*") ? s.startsWith(p.slice(0, -1)) : s === p));
+const type = allow.length ? allow[0].replace(/\*$/, "check") : "check-sensor";
+const blocked = "check-blocked-sensor";
 const timestamp = new Date(Math.floor(Date.now() / 1000) * 1000 - 60000); // 1 min old, whole seconds
 // field: [value sent, unit sent, OPC UA data type expected, unit symbol expected (null = no unit property)]
 const fields = {
@@ -102,14 +107,20 @@ async function main() {
         const session = await client.createSession({ type: UserTokenType.UserName, userName: username, password });
         console.log(`ok   logged in as ${username}`);
 
-        // 6. Publish one cloud-connector message: a number with a unit, a boolean, a string and a list.
+        // 6. Publish test messages. A reading has a number with a unit, a boolean, a string and a list.
         const broker = mqtt.connect(process.env.MQTT_URL, { username: process.env.MQTT_USER || undefined, password: process.env.MQTT_PASS || undefined });
         const reading = { timestamp: timestamp.toISOString() };
         for (const [field, [value, unit]] of Object.entries(fields)) reading[field] = { value, unit };
-        const topic = process.env.MQTT_TOPIC.replace(/\+/g, "x").replace("#", device);
-        await broker.publishAsync(topic, JSON.stringify({ projectId: "check-project", deviceId: device, payload: { [type]: reading } }), { qos: 1 });
+        const topicFor = (id) => process.env.MQTT_TOPIC.replace(/\+/g, "x").replace("#", id);
+        const topic = topicFor(device);
+        // A project-level message (deviceId = projectId) goes first on the same topic and must be skipped.
+        await broker.publishAsync(topic, JSON.stringify({ projectId: "check-project", deviceId: "check-project", payload: { [type]: reading } }), { qos: 1 });
+        // A cloud-connector message, with a second message type that OPCUA_SENSORS may filter out.
+        await broker.publishAsync(topic, JSON.stringify({ projectId: "check-project", deviceId: device, payload: { [type]: reading, [blocked]: reading } }), { qos: 1 });
+        // An on-prem gateway message: no envelope, the device ID is the last level of the topic.
+        await broker.publishAsync(topicFor(onpremDevice), JSON.stringify({ [type]: reading }), { qos: 1 });
         await broker.endAsync();
-        console.log(`ok   published to ${topic}`);
+        console.log(`ok   published to ${topic} and ${topicFor(onpremDevice)}`);
 
         // 7. Read it back: values, data types, lists, units and the reading's own timestamp.
         const toRead = Object.keys(fields).map((field) => ({ nodeId: nodeId(field), attributeId: AttributeIds.Value }));
@@ -142,7 +153,24 @@ async function main() {
         }
         console.log(`ok   read back ${Object.keys(fields).join(", ")}: values, types, list, units, SourceTimestamp ${timestamp.toISOString()}`);
 
-        // 8. The browse tree is Objects/Devices/<device>/<message type>/<field>.
+        // 8. The on-prem message reads back; the project-level message and filtered types create nothing.
+        let onprem;
+        for (let j = 0; j < 25; j++) {
+            onprem = await session.read({ nodeId: `ns=1;s=${onpremDevice}/${type}/temperature`, attributeId: AttributeIds.Value });
+            if (onprem.sourceTimestamp?.getTime() === timestamp.getTime()) break;
+            await wait(400);
+        }
+        assert.ok(onprem.statusCode.isGood(), `on-prem message: ${onprem.statusCode.toString()}`);
+        assert.equal(onprem.value.value, fields.temperature[0], "on-prem message value");
+        const [project, blockedNode] = await session.read([
+            { nodeId: "ns=1;s=check-project", attributeId: AttributeIds.BrowseName },
+            { nodeId: `ns=1;s=${device}/${blocked}`, attributeId: AttributeIds.BrowseName },
+        ]);
+        assert.equal(project.statusCode.name, "BadNodeIdUnknown", "project-level message created a device");
+        if (!exposed(blocked)) assert.equal(blockedNode.statusCode.name, "BadNodeIdUnknown", "message type outside OPCUA_SENSORS exposed");
+        console.log(`ok   on-prem message read back, project-level message skipped, ${exposed(blocked) ? "OPCUA_SENSORS not set (filter not checked)" : "message type outside OPCUA_SENSORS skipped"}`);
+
+        // 9. The browse tree is Objects/Devices/<device>/<message type>/<field>.
         const [browse] = await session.translateBrowsePath([makeBrowsePath("RootFolder", `/Objects/1:Devices/1:${device}/1:${type}/1:temperature`)]);
         assert.equal(browse.targets?.[0]?.targetId.toString(), nodeId("temperature"), "browse path");
         console.log("ok   browse path Objects/Devices/device/message type/field");

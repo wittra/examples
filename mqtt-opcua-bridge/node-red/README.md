@@ -13,9 +13,11 @@ MQTT in  ──▶  ingest function  ──▶  flow context "OpcData"  ◀─�
 ```
 
 - **MQTT in** subscribes to `MQTT_TOPIC`.
-- **The ingest function** (`scripts/mqtt-ingest.js`) reads messages of the form
-  `{"deviceId": "...", "payload": {"<message type>": {"timestamp": "...", "<field>": {"value": ..., "unit": "..."}}}}`
-  and stores each field, with its value, unit and timestamp, in the tab's flow context under `OpcData`. It sends nothing on, so it has no wire to the server.
+- **The ingest function** (`scripts/mqtt-ingest.js`) reads both formats of Wittra telemetry:
+  - from the cloud MQTT connector: `{"projectId": "...", "deviceId": "...", "payload": {"<message type>": {"timestamp": "...", "<field>": {"value": ..., "unit": "..."}}}}`;
+  - from on-prem gateways, on topic `onprem/<device ID>`: the same `{"<message type>": {...}}` map without the envelope. The device ID is the last level of the topic.
+
+  It stores each field, with its value, unit and timestamp, in the tab's flow context under `OpcData`. It sends nothing on, so it has no wire to the server. It skips project-level messages (where `deviceId` equals `projectId`, such as `wittra-kpi-drssi`) and message types outside `OPCUA_SENSORS`.
 - **The OPC UA Compact Server** runs the address-space script (`scripts/address-space-dynamic.js`). Every 200 ms the script reads `OpcData`, adds variables for fields it hasn't seen before and serves the latest values.
 - **Security** comes from `scripts/opcua-security.js`. The compact server has no settings for logins, security policies or certificate trust, so the `Dockerfile` patches the package to use the options from that file.
 
@@ -62,7 +64,8 @@ Settings come from `.env`:
 | `MQTT_URL` | `mqtt://mosquitto:1883` | Broker URL. Use `mqtts://host:8883` for TLS, checked against the system CAs |
 | `MQTT_USER`, `MQTT_PASS` | empty | Broker login |
 | `MQTT_CLIENT_ID` | random | MQTT client ID |
-| `MQTT_TOPIC` | `onprem/#` | Topic of your Wittra MQTT publication |
+| `MQTT_TOPIC` | `onprem/#` | Topic of your Wittra MQTT publication, or `onprem/#` for gateways that bridge to this broker |
+| `OPCUA_SENSORS` | empty (all) | Message types to expose: comma-separated names, and a trailing `*` matches a prefix, e.g. `LAN-MIOTY-*,wittra-tag-battery`. Each exposed field is one OPC UA variable, which matters where clients licence data points |
 | `OPCUA_HOSTNAME` | `wittra-opcua` | Host name in the endpoint URL and the server certificate. Set it to the name clients use, before the first start |
 | `USERS_FILE` | `./users.json` | OPC UA users, kept out of git |
 
@@ -104,6 +107,9 @@ It ends with `PASS`, or with `FAIL` and the failed check. It takes about 25 s, b
 - logins over an unencrypted connection, anonymous logins, wrong passwords and certificate logins are refused;
 - an unknown client certificate is refused, and accepted once moved from `rejected/` to `trusted/certs/`;
 - a test reading published over MQTT (device `WITTRA-CHECK`) reads back over OPC UA with the right values and data types, a list as an array, units as `EngineeringUnits`, and the reading's timestamp as SourceTimestamp;
+- an on-prem message without an envelope (device `WITTRA-ONPREM`, taken from the topic) reads back too;
+- a project-level message creates nothing;
+- a message type outside `OPCUA_SENSORS` is not exposed. This is checked only when `OPCUA_SENSORS` is set; the test message type is then named after its first entry, so it passes the filter. Check a filter on a fresh start, for example `OPCUA_SENSORS='test-*' docker compose --profile lab up -d`;
 - the browse path is `Objects/Devices/<device>/<message type>/<field>`.
 
 The check logs in as the first user in `users.json`. It publishes test data, so it refuses to run unless the bridge uses the lab broker. If `.env` sets another broker, start the test with the lab broker instead, and run `docker compose up -d` afterwards to go back:
