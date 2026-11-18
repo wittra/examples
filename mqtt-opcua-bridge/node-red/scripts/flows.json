@@ -93,7 +93,7 @@
         "name": "OPC UA Server",
         "showStatusActivities": true,
         "showErrors": true,
-        "allowAnonymous": true,
+        "allowAnonymous": false,
         "individualCerts": false,
         "isAuditing": false,
         "serverDiscovery": false,

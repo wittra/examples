@@ -3,6 +3,8 @@ services:
     # Node-RED + the nodes in scripts/package.json, see Dockerfile
     build: .
     image: mqtt-opcua-bridge-node-red
+    # The OPC UA endpoint URL and the server certificate use this name. Keep it stable.
+    hostname: ${OPCUA_HOSTNAME:-wittra-opcua}
     restart: unless-stopped
     ports:
       - "127.0.0.1:1880:1880" # editor: read-only, reachable from this machine only
@@ -20,6 +22,12 @@ services:
       - ./scripts:/opt/bridge:ro # flow, settings and check script, from git
       - ./scripts/flows_cred.json:/data/flows_cred.json:ro # Node-RED reads credentials from its user dir only
       - ./scripts/settings.js:/data/settings.js:ro # the default settings path, which the image's health check reads too
+      - type: bind # OPC UA users, kept out of git
+        source: ${USERS_FILE:-./users.json}
+        target: /run/secrets/opcua-users.json
+        read_only: true
+        bind:
+          create_host_path: false # fail instead of starting without users
 
   # Local test broker: docker compose --profile lab up
   mosquitto:
