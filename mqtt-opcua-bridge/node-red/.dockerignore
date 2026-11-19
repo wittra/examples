@@ -1,3 +1,4 @@
 # Keep runtime data and secrets out of the image
 data
 .env
+users.json
