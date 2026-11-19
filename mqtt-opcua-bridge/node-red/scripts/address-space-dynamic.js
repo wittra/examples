@@ -87,7 +87,7 @@ function constructAddressSpaceScript(server, addressSpace, eventObjects, done) {
     }
     const [code, symbol, description] = UNITS[key] || [null, name, name];
     const eu = opcua.makeEUInformation(code || "", symbol, description);
-    
+
     if (!code) {
       eu.unitId = -1;
     }
@@ -179,7 +179,7 @@ function constructAddressSpaceScript(server, addressSpace, eventObjects, done) {
     const tag = { entry, kind };
     const eu = kind.dataType === DataType.Double ? engineeringUnits(entry.unit) : null;
     const access = ALLOW_WRITES ? "CurrentRead | CurrentWrite" : "CurrentRead";
-    
+
     // Here we create the variable node in the address space. If it already exists, we just update the value.
     const options = {
       componentOf: ensureObject(segments.slice(0, -1)),
@@ -192,7 +192,7 @@ function constructAddressSpaceScript(server, addressSpace, eventObjects, done) {
       accessLevel: access,
       userAccessLevel: access,
     };
-    
+
     const binding = {
       timestamped_get: () =>
         new DataValue({
