@@ -3,15 +3,31 @@ services:
     # Node-RED + the nodes in scripts/package.json, see Dockerfile
     build: .
     image: mqtt-opcua-bridge-node-red
-    container_name: node-red
     restart: unless-stopped
     ports:
-      - "1880:1880"
-      - "53880:53880" # Pay attention to this port, the standard OPC UA port is 4840.
+      - "127.0.0.1:1880:1880" # editor: read-only, reachable from this machine only
+      - "53880:53880" # OPC UA. Pay attention to this port, the standard OPC UA port is 4840.
     environment:
-      - TZ=Europe/Stockholm
-    env_file:
-      - path: .env
-        required: false
+      TZ: Europe/Stockholm
+      FLOWS: /opt/bridge/flows.json # the flow from git, mounted below
+      MQTT_URL: ${MQTT_URL:-mqtt://mosquitto:1883}
+      MQTT_USER: ${MQTT_USER:-}
+      MQTT_PASS: ${MQTT_PASS:-}
+      MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-}
+      MQTT_TOPIC: ${MQTT_TOPIC:-onprem/#}
     volumes:
-      - ./data:/data
+      - data:/data
+      - ./scripts:/opt/bridge:ro # flow, settings and check script, from git
+      - ./scripts/flows_cred.json:/data/flows_cred.json:ro # Node-RED reads credentials from its user dir only
+      - ./scripts/settings.js:/data/settings.js:ro # the default settings path, which the image's health check reads too
+
+  # Local test broker: docker compose --profile lab up
+  mosquitto:
+    image: eclipse-mosquitto:2.0.20
+    profiles: [lab]
+    command: mosquitto -c /mosquitto-no-auth.conf
+    ports:
+      - "127.0.0.1:1883:1883"
+
+volumes:
+  data:
