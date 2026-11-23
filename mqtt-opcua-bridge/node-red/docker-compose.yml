@@ -38,5 +38,33 @@ services:
     ports:
       - "127.0.0.1:1883:1883"
 
+  # Broker for on-prem gateways: docker compose --profile broker up (see README, "Gateways").
+  # Every client logs in with MQTT_USER and MQTT_PASS. Gateways connect on port 8883 with TLS,
+  # using the pre-shared key GATEWAY_PSK. Port 1883 is for the bridge, inside Docker only.
+  broker:
+    image: eclipse-mosquitto:2.0.20
+    profiles: [broker]
+    restart: unless-stopped
+    environment:
+      MQTT_USER: ${MQTT_USER:-}
+      MQTT_PASS: ${MQTT_PASS:-}
+      GATEWAY_PSK: ${GATEWAY_PSK:-}
+    # Writes the login and the key to the files mosquitto.conf names, then starts mosquitto
+    command:
+      - sh
+      - -euc
+      - |
+        : "$${MQTT_USER:?set MQTT_USER in .env}" "$${MQTT_PASS:?set MQTT_PASS in .env}"
+        case "$$GATEWAY_PSK" in ""|*[!0-9a-fA-F]*) echo "set GATEWAY_PSK in .env, as hex" >&2; exit 1;; esac
+        umask 077
+        mosquitto_passwd -c -b /mosquitto/config/passwd "$$MQTT_USER" "$$MQTT_PASS"
+        echo "wittra-gateway:$$GATEWAY_PSK" > /mosquitto/config/psk
+        chown mosquitto:mosquitto /mosquitto/config/passwd /mosquitto/config/psk
+        exec mosquitto -c /etc/mosquitto/mosquitto.conf
+    volumes:
+      - ./mosquitto.conf:/etc/mosquitto/mosquitto.conf:ro
+    ports:
+      - "8883:8883"
+
 volumes:
   data:

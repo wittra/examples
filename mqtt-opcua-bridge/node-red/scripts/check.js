@@ -1,6 +1,6 @@
 // End-to-end check: the OPC UA server's security, then one test reading published over MQTT and
 // read back over OPC UA with Basic256Sha256 + SignAndEncrypt and a username and password.
-// It publishes test data, so it only runs against the lab broker:
+// It publishes test data, so it only runs against the lab or gateway broker:
 //   docker compose --profile lab up -d --build
 //   docker compose exec node-red node /opt/bridge/check.js
 const assert = require("node:assert/strict");
@@ -43,9 +43,9 @@ async function rejects(promise, what) {
 }
 
 async function main() {
-    // Test data goes to the lab broker only, never to a broker set in .env.
+    // Test data goes to a broker this compose file starts, never to one set in .env.
     const brokerHost = new URL(process.env.MQTT_URL).hostname;
-    assert.equal(brokerHost, "mosquitto", `the bridge uses the broker at ${brokerHost}; check.js publishes test data, so run it against the lab broker (see README, "Test")`);
+    assert.ok(["mosquitto", "broker"].includes(brokerHost), `the bridge uses the broker at ${brokerHost}; check.js publishes test data, so run it against the lab or gateway broker (see README, "Test")`);
 
     // 1. The editor is read-only: the flow is managed in git.
     const settings = await (await fetch("http://127.0.0.1:1880/settings")).json();
