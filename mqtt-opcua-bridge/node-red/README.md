@@ -2,7 +2,7 @@
 
 A Node-RED example that subscribes to Wittra telemetry from the Wittra MQTT connector and serves it from an OPC UA server, so OPC UA clients (UaExpert, Prosys OPC UA Browser, SCADA or MES connectors) can browse and read device data.
 
-> **Demo only.** As set up here, the OPC UA server accepts **any username and password**, allows anonymous logins and offers an unencrypted endpoint, and the Node-RED editor has no login. Run it on a lab network only. See [Known limitations](#known-limitations).
+> **Demo only.** As set up here, the OPC UA server accepts **any username and password**, allows anonymous logins and offers an unencrypted endpoint. Run it on a lab network only. See [Known limitations](#known-limitations).
 
 ## How it works
 
@@ -18,7 +18,7 @@ MQTT in  ──▶  ingest function  ──▶  flow context "OpcData"  ◀─�
   and stores each field, with its value, unit and timestamp, in the tab's flow context under `OpcData`. It sends nothing on, so it has no wire to the server.
 - **The OPC UA Compact Server** runs the address-space script (`scripts/address-space-dynamic.js`). Every 200 ms the script reads `OpcData`, adds variables for fields it hasn't seen before and serves the latest values.
 
-Both scripts are embedded in `scripts/flows.json`, and the copies in the flow are what Node-RED runs. If you change a script, change it in the flow too.
+Node-RED loads the flow from `scripts/flows.json` at start-up, with the settings in `scripts/settings.js`. Both scripts are embedded in the flow, and the copies in the flow are what runs. If you change a script, change it in the flow too.
 
 ### Address space
 
@@ -39,26 +39,48 @@ Objects
 
 ## Run
 
-1. Copy `.env.example` to `.env` and fill it in (see below).
-2. Start Node-RED:
-   ```sh
-   docker compose up -d --build
-   ```
-3. Open the editor at http://localhost:1880, then use the menu: **Import**, select `scripts/flows.json`, **Import**.
-4. Open the **MQTT Wittra Broker** configuration node, and on its **Security** tab enter `${MQTT_USER}` as the username and `${MQTT_PASS}` as the password. Node-RED fills both in from `.env`.
-5. **Deploy**.
+```sh
+cp .env.example .env                          # optional: every setting has a default
+docker compose --profile lab up -d --build    # with a local test broker
+docker compose up -d --build                  # with the broker set in .env
+```
 
-The OPC UA endpoint is `opc.tcp://<host>:53880/UA/Wittra/EU-Testbed`.
+- **OPC UA endpoint:** `opc.tcp://<host>:53880/UA/Wittra/EU-Testbed`.
+- **Node-RED editor:** http://127.0.0.1:1880, reachable from this machine only, and read-only.
+- **To change the flow,** import `scripts/flows.json` into any Node-RED, edit it there, export it back over the file, and run `docker compose restart node-red`.
+- **Node-RED's own state** is kept in the `data` volume. `docker compose down -v` deletes it.
 
 ## Configure
 
-| Variable | Meaning |
-|---|---|
-| `MQTT_HOST` | Broker host name |
-| `MQTT_PORT` | Broker port. The broker node connects with TLS, so use the TLS port, usually 8883 |
-| `MQTT_USER`, `MQTT_PASS` | Broker login, used through `${MQTT_USER}` and `${MQTT_PASS}` in the broker node |
-| `MQTT_CLIENT_ID` | MQTT client ID; leave empty for a random one |
-| `MQTT_TOPIC` | Topic of your Wittra MQTT publication |
+Settings come from `.env`:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MQTT_URL` | `mqtt://mosquitto:1883` | Broker URL. Use `mqtts://host:8883` for TLS, checked against the system CAs |
+| `MQTT_USER`, `MQTT_PASS` | empty | Broker login |
+| `MQTT_CLIENT_ID` | random | MQTT client ID |
+| `MQTT_TOPIC` | `onprem/#` | Topic of your Wittra MQTT publication |
+
+The broker login reaches the flow through `scripts/flows_cred.json`, which holds only the `${MQTT_USER}` and `${MQTT_PASS}` placeholders. That is also why Node-RED logs "Using unencrypted credentials" at start-up.
+
+## Test
+
+```sh
+docker compose --profile lab up -d --build
+docker compose exec node-red node /opt/bridge/check.js
+```
+
+It ends with `PASS`, or with `FAIL` and the failed check. It checks that:
+
+- the editor is read-only;
+- a test reading published over MQTT (device `WITTRA-CHECK`) reads back over OPC UA with the right values and data types, a list as an array, units as `EngineeringUnits`, and the reading's timestamp as SourceTimestamp;
+- the browse path is `Objects/Devices/<device>/<message type>/<field>`.
+
+It publishes test data, so it refuses to run unless the bridge uses the lab broker. If `.env` sets another broker, start the test with the lab broker instead, and run `docker compose up -d` afterwards to go back:
+
+```sh
+MQTT_URL=mqtt://mosquitto:1883 docker compose --profile lab up -d --build
+```
 
 ## Known limitations
 
@@ -67,5 +89,3 @@ The OPC UA endpoint is `opc.tcp://<host>:53880/UA/Wittra/EU-Testbed`.
 - **Server certificate inside the image.** It is generated when the image is built, so every rebuild creates a new one, and its name doesn't match the server's.
 - **No model change events.** The script adds nodes inside a model change transaction, but node-opcua only reports an added node when its parent has a `NodeVersion` property, and the nodes this script creates have none. So no `GeneralModelChangeEvent` is sent, and clients must re-browse to find new devices and fields.
 - **Endpoint host name.** The server advertises the container's host name in its endpoint URL. If a client can't follow it, set the server node's **Alternate Hostname**, or the container's `hostname`, to the name clients use.
-- **Open editor.** The editor is published on all network interfaces, with no login.
-- **Context store warning.** The scripts use a context store named `memoryOnly`. Without one in Node-RED's `settings.js`, Node-RED logs a warning at start-up and uses its default memory store, which works the same.
