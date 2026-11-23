@@ -2,7 +2,7 @@
 
 A Node-RED example that subscribes to Wittra telemetry from the Wittra MQTT connector and serves it from an OPC UA server, so OPC UA clients (UaExpert, Prosys OPC UA Browser, SCADA or MES connectors) can browse and read device data.
 
-> **Demo only.** As set up here, the OPC UA server accepts **any username and password**, allows anonymous logins and offers an unencrypted endpoint. Run it on a lab network only. See [Known limitations](#known-limitations).
+**Security:** the server offers one endpoint, Basic256Sha256 with Sign & Encrypt. Clients log in with a username and password from `users.json`; anonymous and certificate logins are refused, and a client's certificate must be trusted by hand before it can connect.
 
 ## How it works
 
@@ -13,10 +13,13 @@ MQTT in  ──▶  ingest function  ──▶  flow context "OpcData"  ◀─�
 ```
 
 - **MQTT in** subscribes to `MQTT_TOPIC`.
-- **The ingest function** (`scripts/mqtt-ingest.js`) reads messages of the form
-  `{"deviceId": "...", "payload": {"<message type>": {"timestamp": "...", "<field>": {"value": ..., "unit": "..."}}}}`
-  and stores each field, with its value, unit and timestamp, in the tab's flow context under `OpcData`. It sends nothing on, so it has no wire to the server.
+- **The ingest function** (`scripts/mqtt-ingest.js`) reads both formats of Wittra telemetry:
+  - from the cloud MQTT connector: `{"projectId": "...", "deviceId": "...", "payload": {"<message type>": {"timestamp": "...", "<field>": {"value": ..., "unit": "..."}}}}`;
+  - from on-prem gateways (see [Gateways](#gateways)), on topic `onprem/<device ID>`: the same `{"<message type>": {...}}` map without the envelope. The device ID is the last level of the topic.
+
+  It stores each field, with its value, unit and timestamp, in the tab's flow context under `OpcData`. It sends nothing on, so it has no wire to the server. It skips project-level messages (where `deviceId` equals `projectId`, such as `wittra-kpi-drssi`) and message types outside `OPCUA_SENSORS`.
 - **The OPC UA Compact Server** runs the address-space script (`scripts/address-space-dynamic.js`). Every 200 ms the script reads `OpcData`, adds variables for fields it hasn't seen before and serves the latest values.
+- **Security** comes from `scripts/opcua-security.js`. The compact server has no settings for logins, security policies or certificate trust, so the `Dockerfile` patches the package to use the options from that file.
 
 Node-RED loads the flow from `scripts/flows.json` at start-up, with the settings in `scripts/settings.js`. Both scripts are embedded in the flow, and the copies in the flow are what runs. If you change a script, change it in the flow too.
 
@@ -40,15 +43,18 @@ Objects
 ## Run
 
 ```sh
-cp .env.example .env                          # optional: every setting has a default
+cp users.example.json users.json              # then set a real password
+cp .env.example .env                          # optional for the lab: every setting has a default
 docker compose --profile lab up -d --build    # with a local test broker
+docker compose --profile broker up -d --build # with a broker for on-prem gateways, see Gateways
 docker compose up -d --build                  # with the broker set in .env
 ```
 
-- **OPC UA endpoint:** `opc.tcp://<host>:53880/UA/Wittra/EU-Testbed`.
+- **OPC UA endpoint:** `opc.tcp://<OPCUA_HOSTNAME>:53880/UA/Wittra/EU-Testbed`.
 - **Node-RED editor:** http://127.0.0.1:1880, reachable from this machine only, and read-only.
+- **`users.json` is required.** Compose refuses to start without it.
 - **To change the flow,** import `scripts/flows.json` into any Node-RED, edit it there, export it back over the file, and run `docker compose restart node-red`.
-- **Node-RED's own state** is kept in the `data` volume. `docker compose down -v` deletes it.
+- **State** is kept in the `data` volume: the server certificate and private key, the trusted and rejected client certificates, and Node-RED's own files. It survives restarts and `docker compose down`; `docker compose down -v` deletes it.
 
 ## Configure
 
@@ -56,12 +62,76 @@ Settings come from `.env`:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `MQTT_URL` | `mqtt://mosquitto:1883` | Broker URL. Use `mqtts://host:8883` for TLS, checked against the system CAs |
-| `MQTT_USER`, `MQTT_PASS` | empty | Broker login |
+| `MQTT_URL` | `mqtt://mosquitto:1883` | Broker URL. Use `mqtt://broker:1883` with the gateway broker, and `mqtts://host:8883` for TLS, checked against the system CAs |
+| `MQTT_USER`, `MQTT_PASS` | empty | Broker login. The gateway broker creates it, for the bridge and the gateways |
 | `MQTT_CLIENT_ID` | random | MQTT client ID |
-| `MQTT_TOPIC` | `onprem/#` | Topic of your Wittra MQTT publication |
+| `MQTT_TOPIC` | `onprem/#` | Topic of your Wittra MQTT publication, or `onprem/#` for gateways (see [Gateways](#gateways)) |
+| `OPCUA_SENSORS` | empty (all) | Message types to expose: comma-separated names, and a trailing `*` matches a prefix, e.g. `LAN-MIOTY-*,wittra-tag-battery`. Each exposed field is one OPC UA variable, which matters where clients licence data points |
+| `OPCUA_HOSTNAME` | `wittra-opcua` | Host name in the endpoint URL and the server certificate. Set it to the name clients use, before the first start |
+| `USERS_FILE` | `./users.json` | OPC UA users, kept out of git |
+| `GATEWAY_PSK` | empty | Gateway broker only: the gateways' pre-shared key, in hex. Create one with `openssl rand -hex 32` |
+
+`users.json` is a list of `{"username", "password"}` entries; see `users.example.json`. After changing it, run `docker compose restart node-red`: it is mounted as a single file, so the container only sees a replaced file after a restart.
 
 The broker login reaches the flow through `scripts/flows_cred.json`, which holds only the `${MQTT_USER}` and `${MQTT_PASS}` placeholders. That is also why Node-RED logs "Using unencrypted credentials" at start-up.
+
+## Gateways
+
+Wittra gateways can send their data straight to this machine. Their on-prem bridge forwards it to a broker that the `broker` profile starts:
+
+- **Port 8883, for gateways:** TLS with a pre-shared key, and a login. Open this port to the gateways only.
+- **Port 1883, for the bridge:** inside Docker only.
+
+Both ports take the same login, `MQTT_USER` and `MQTT_PASS`. Anonymous logins are refused.
+
+1. **Set in `.env`:**
+   ```sh
+   MQTT_URL=mqtt://broker:1883
+   MQTT_USER=<user>
+   MQTT_PASS=<password>
+   GATEWAY_PSK=<key>    # create one with: openssl rand -hex 32
+   ```
+2. **Start it:** `docker compose --profile broker up -d --build`. The broker refuses to start without these settings.
+3. **Add a bridge to each gateway's configuration** (capability `config-gateway-onprem`), under `onprem.bridges`:
+   ```json
+   {
+       "name": "wittra-opcua",
+       "address": "<this machine's IP address>:8883",
+       "remote_username": "<MQTT_USER>",
+       "remote_password": "<MQTT_PASS>",
+       "remote_topic_prefix": "onprem",
+       "remote_topic_qos": 1,
+       "bridge_identity": "wittra-gateway",
+       "bridge_psk": "<GATEWAY_PSK>"
+   }
+   ```
+   - `remote_topic_prefix` must be `onprem`. The gateway then publishes on `onprem/<device ID>`, which the default `MQTT_TOPIC` reads. Without a prefix, the topic is only the device ID.
+   - Leave out `bridge_tls_version`. With a pre-shared key, the bridge only works with TLS 1.2, its default: `tlsv1.3` fails with "no protocols available".
+4. **Check that data arrives:**
+   ```sh
+   docker compose exec broker sh -c 'mosquitto_sub -u "$MQTT_USER" -P "$MQTT_PASS" -t "onprem/#" -v'
+   ```
+   If nothing arrives, the gateway's state shows why, in `onprem.bridges.bridge_status`.
+
+## Connect an OPC UA client
+
+1. **Give the client the server certificate** if it asks for one, for example as a `.der` file:
+   ```sh
+   docker compose exec -T node-red openssl x509 -outform der \
+     -in /data/pki/own/certs/certificate.pem > wittra-opcua.der
+   ```
+2. **Configure the client:** the endpoint URL above, security policy Basic256Sha256, mode Sign & Encrypt, and a username and password from `users.json`.
+3. **Connect once.** The server refuses the unknown client and stores its certificate in `rejected/`:
+   ```sh
+   docker compose exec node-red ls /data/pki/rejected
+   ```
+4. **Trust the certificate by moving it.** Don't copy it: a certificate in `rejected/` wins over the same one in `trusted/`.
+   ```sh
+   docker compose exec node-red mv "/data/pki/rejected/<file>.pem" /data/pki/trusted/certs/
+   ```
+   The server notices within about 10 s. If the client is still refused after that, run `docker compose restart node-red`.
+
+To use a different host name later: delete `/data/pki/own/certs/certificate.pem`, restart, and give clients the new certificate.
 
 ## Test
 
@@ -70,13 +140,19 @@ docker compose --profile lab up -d --build
 docker compose exec node-red node /opt/bridge/check.js
 ```
 
-It ends with `PASS`, or with `FAIL` and the failed check. It checks that:
+It ends with `PASS`, or with `FAIL` and the failed check. It takes about 25 s, because it waits for the server's certificate-folder poller. It checks that:
 
 - the editor is read-only;
+- the only endpoint is Basic256Sha256 with Sign & Encrypt, anonymous login is not offered, and the server certificate is for this host name;
+- logins over an unencrypted connection, anonymous logins, wrong passwords and certificate logins are refused;
+- an unknown client certificate is refused, and accepted once moved from `rejected/` to `trusted/certs/`;
 - a test reading published over MQTT (device `WITTRA-CHECK`) reads back over OPC UA with the right values and data types, a list as an array, units as `EngineeringUnits`, and the reading's timestamp as SourceTimestamp;
+- an on-prem message without an envelope (device `WITTRA-ONPREM`, taken from the topic) reads back too;
+- a project-level message creates nothing;
+- a message type outside `OPCUA_SENSORS` is not exposed. This is checked only when `OPCUA_SENSORS` is set; the test message type is then named after its first entry, so it passes the filter. Check a filter on a fresh start, for example `OPCUA_SENSORS='test-*' docker compose --profile lab up -d`;
 - the browse path is `Objects/Devices/<device>/<message type>/<field>`.
 
-It publishes test data, so it refuses to run unless the bridge uses the lab broker. If `.env` sets another broker, start the test with the lab broker instead, and run `docker compose up -d` afterwards to go back:
+The check logs in as the first user in `users.json`. It publishes test data, so it refuses to run unless the bridge uses the lab broker or the gateway broker. On the gateway broker, run it before real data arrives: its test devices stay until the next restart. If `.env` sets another broker, start the test with the lab broker instead, and run `docker compose up -d` afterwards to go back:
 
 ```sh
 MQTT_URL=mqtt://mosquitto:1883 docker compose --profile lab up -d --build
@@ -84,8 +160,8 @@ MQTT_URL=mqtt://mosquitto:1883 docker compose --profile lab up -d --build
 
 ## Known limitations
 
-- **Any login works.** `node-red-contrib-opcua-compact-server` 2.2.0 hard-codes its login check to accept every username and password (2.3.0 is the same), and anonymous login is on in this flow.
-- **Unencrypted endpoint.** Security policies can't be configured, so the server offers `None` alongside `Basic256Sha256`, `Aes128_Sha256_RsaOaep` and `Aes256_Sha256_RsaPss`.
-- **Server certificate inside the image.** It is generated when the image is built, so every rebuild creates a new one, and its name doesn't match the server's.
+- **Plain-text passwords.** `users.json` holds passwords in plain text. Keep the file readable by as few people as possible.
+- **One gateway login.** The bridge and every gateway share the broker login and the pre-shared key, and both are entered in plain text in the gateway configuration.
+- **Security relies on a patch.** The `Dockerfile` patches `node-red-contrib-opcua-compact-server` 2.2.0 to use `scripts/opcua-security.js`. The build fails if the package's code changes, so an upgrade means checking the patch again. The compact server still logs that it runs with "1 insecure/unbounded default", because its own check doesn't see the patch.
 - **No model change events.** The script adds nodes inside a model change transaction, but node-opcua only reports an added node when its parent has a `NodeVersion` property, and the nodes this script creates have none. So no `GeneralModelChangeEvent` is sent, and clients must re-browse to find new devices and fields.
-- **Endpoint host name.** The server advertises the container's host name in its endpoint URL. If a client can't follow it, set the server node's **Alternate Hostname**, or the container's `hostname`, to the name clients use.
+- **Host names and addresses.** The certificate names `OPCUA_HOSTNAME` and the container's own IP address, not the host's IP address. Clients should reach the server by `OPCUA_HOSTNAME`.

@@ -3,6 +3,8 @@ services:
     # Node-RED + the nodes in scripts/package.json, see Dockerfile
     build: .
     image: mqtt-opcua-bridge-node-red
+    # The OPC UA endpoint URL and the server certificate use this name. Keep it stable.
+    hostname: ${OPCUA_HOSTNAME:-wittra-opcua}
     restart: unless-stopped
     ports:
       - "127.0.0.1:1880:1880" # editor: read-only, reachable from this machine only
@@ -15,11 +17,18 @@ services:
       MQTT_PASS: ${MQTT_PASS:-}
       MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-}
       MQTT_TOPIC: ${MQTT_TOPIC:-onprem/#}
+      OPCUA_SENSORS: ${OPCUA_SENSORS:-}
     volumes:
       - data:/data
       - ./scripts:/opt/bridge:ro # flow, settings and check script, from git
       - ./scripts/flows_cred.json:/data/flows_cred.json:ro # Node-RED reads credentials from its user dir only
       - ./scripts/settings.js:/data/settings.js:ro # the default settings path, which the image's health check reads too
+      - type: bind # OPC UA users, kept out of git
+        source: ${USERS_FILE:-./users.json}
+        target: /run/secrets/opcua-users.json
+        read_only: true
+        bind:
+          create_host_path: false # fail instead of starting without users
 
   # Local test broker: docker compose --profile lab up
   mosquitto:
@@ -28,6 +37,34 @@ services:
     command: mosquitto -c /mosquitto-no-auth.conf
     ports:
       - "127.0.0.1:1883:1883"
+
+  # Broker for on-prem gateways: docker compose --profile broker up (see README, "Gateways").
+  # Every client logs in with MQTT_USER and MQTT_PASS. Gateways connect on port 8883 with TLS,
+  # using the pre-shared key GATEWAY_PSK. Port 1883 is for the bridge, inside Docker only.
+  broker:
+    image: eclipse-mosquitto:2.0.20
+    profiles: [broker]
+    restart: unless-stopped
+    environment:
+      MQTT_USER: ${MQTT_USER:-}
+      MQTT_PASS: ${MQTT_PASS:-}
+      GATEWAY_PSK: ${GATEWAY_PSK:-}
+    # Writes the login and the key to the files mosquitto.conf names, then starts mosquitto
+    command:
+      - sh
+      - -euc
+      - |
+        : "$${MQTT_USER:?set MQTT_USER in .env}" "$${MQTT_PASS:?set MQTT_PASS in .env}"
+        case "$$GATEWAY_PSK" in ""|*[!0-9a-fA-F]*) echo "set GATEWAY_PSK in .env, as hex" >&2; exit 1;; esac
+        umask 077
+        mosquitto_passwd -c -b /mosquitto/config/passwd "$$MQTT_USER" "$$MQTT_PASS"
+        echo "wittra-gateway:$$GATEWAY_PSK" > /mosquitto/config/psk
+        chown mosquitto:mosquitto /mosquitto/config/passwd /mosquitto/config/psk
+        exec mosquitto -c /etc/mosquitto/mosquitto.conf
+    volumes:
+      - ./mosquitto.conf:/etc/mosquitto/mosquitto.conf:ro
+    ports:
+      - "8883:8883"
 
 volumes:
   data:
